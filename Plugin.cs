@@ -375,6 +375,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
     // Last good answer from each sync plugin, reused briefly if a call fails mid-update.
     private readonly Dictionary<string, (List<nint> List, DateTime At)> lastGoodIpc = new();
     private int penumbraMatches;
+    private readonly Dictionary<string, int> penumbraOtherNames = new();
     private string penumbraStatus = "?";
 
     // Which sync plugin (if any) is handling this character.
@@ -433,20 +434,28 @@ public sealed unsafe class Plugin : IDalamudPlugin
             // Penumbra.Api's GetCollectionForObject, called directly so we don't need the package.
             var getCollection = PluginInterface.GetIpcSubscriber<int, (bool, bool, (Guid, string))>("Penumbra.GetCollectionForObject.V5");
             var me = ObjectTable.LocalPlayer?.Address ?? 0;
+            penumbraOtherNames.Clear();
             foreach (var obj in ObjectTable)
             {
                 if (obj.ObjectKind != ObjectKind.Pc || obj.Address == me)
                     continue;
 
-                var (valid, individual, (_, name)) = getCollection.InvokeFunc(obj.ObjectIndex);
-                if (!valid || !individual || string.IsNullOrEmpty(name))
+                // Note: sync plugins use *temporary* collections, which Penumbra reports with
+                // IndividualSet = false, so only the collection name matters here.
+                var (valid, _, (_, name)) = getCollection.InvokeFunc(obj.ObjectIndex);
+                if (!valid || string.IsNullOrEmpty(name))
                     continue;
 
-                var source = name.StartsWith("Lightless_", StringComparison.Ordinal) ? SyncSource.Lightless
-                    : name.StartsWith("Mare_", StringComparison.Ordinal) ? SyncSource.PlayerSync
+                var source = name.StartsWith("Lightless", StringComparison.OrdinalIgnoreCase) ? SyncSource.Lightless
+                    : name.StartsWith("Mare", StringComparison.OrdinalIgnoreCase) || name.StartsWith("PlayerSync", StringComparison.OrdinalIgnoreCase) ? SyncSource.PlayerSync
                     : SyncSource.None;
                 if (source == SyncSource.None)
+                {
+                    // remember a few other collection names for /tzoom syncinfo
+                    var prefix = name.Length > 12 ? name[..12] + "…" : name;
+                    penumbraOtherNames[prefix] = penumbraOtherNames.GetValueOrDefault(prefix) + 1;
                     continue;
+                }
 
                 found = true;
                 penumbraMatches++;
@@ -474,6 +483,8 @@ public sealed unsafe class Plugin : IDalamudPlugin
         foreach (var (ipc, _) in SyncIpcs)
             Chat.Print($"  {ipc}: {syncIpcStatus.GetValueOrDefault(ipc, "?")}");
         Chat.Print($"  Penumbra collections: {penumbraStatus}");
+        if (penumbraOtherNames.Count > 0)
+            Chat.Print("  Other collections in use: " + string.Join(", ", penumbraOtherNames.OrderByDescending(kv => kv.Value).Take(5).Select(kv => $"{kv.Key} ×{kv.Value}")));
 
         var players = 0;
         var matched = new HashSet<nint>();
