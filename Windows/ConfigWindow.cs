@@ -76,8 +76,8 @@ public sealed class ConfigWindow : Window
 
         var hideUi = c.HideUiWhileZoomed;
         if (Theme.Toggle("Hide the game UI while zoomed", ref hideUi,
-                "Hides the HUD, chat, nameplates and plugin windows for a clean view, the same as Scroll Lock. " +
-                "It comes back when you stop zooming. To get it back sooner, press Scroll Lock (or your Toggle UI key)."))
+                "Hides the HUD, chat, nameplates and other plugin windows for a clean view, the same as Scroll Lock. " +
+                "Target Zoom's own windows stay open so you can still stop. Everything comes back when you stop zooming."))
         {
             c.HideUiWhileZoomed = hideUi;
             changed = true;

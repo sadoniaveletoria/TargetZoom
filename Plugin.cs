@@ -286,6 +286,8 @@ public sealed unsafe class Plugin : IDalamudPlugin
             return; // already hidden by the player; leave it to them
         GameUiVisible = false;
         weHidUi = true;
+        // Keep Target Zoom's own windows up, so the Stop button is still there.
+        PluginInterface.UiBuilder.DisableUserUiHide = true;
     }
 
     private void RestoreGameUi()
@@ -294,6 +296,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
         if (weHidUi && !GameUiVisible)
             GameUiVisible = true;
         weHidUi = false;
+        PluginInterface.UiBuilder.DisableUserUiHide = false;
     }
 
     public void StopZoom()
@@ -365,7 +368,6 @@ public sealed unsafe class Plugin : IDalamudPlugin
     [
         ("PlayerSync.GetHandledAddresses", SyncSource.PlayerSync),
         ("LightlessSync.GetHandledAddresses", SyncSource.Lightless),
-        ("Lightless.GetHandledAddresses", SyncSource.Lightless),
         ("MareSynchronos.GetHandledAddresses", SyncSource.Other),
     ];
 
@@ -414,11 +416,11 @@ public sealed unsafe class Plugin : IDalamudPlugin
                 if (installed && lastGoodIpc.TryGetValue(ipc, out var last) && DateTime.UtcNow - last.At < TimeSpan.FromSeconds(10))
                 {
                     list = last.List;
-                    syncIpcStatus[ipc] = $"failed ({ex.GetType().Name}), using last answer: {list.Count} people";
+                    syncIpcStatus[ipc] = $"failed ({Describe(ex)}), using last answer: {list.Count} people";
                 }
                 else
                 {
-                    syncIpcStatus[ipc] = installed ? $"failed ({ex.GetType().Name})" : "not installed";
+                    syncIpcStatus[ipc] = installed ? $"failed ({Describe(ex)})" : "not installed";
                 }
             }
 
@@ -472,6 +474,15 @@ public sealed unsafe class Plugin : IDalamudPlugin
     }
 
     private readonly Dictionary<string, string> syncIpcStatus = new();
+
+    // TargetInvocationException just means "the other plugin threw"; show what it actually threw.
+    private static string Describe(Exception ex)
+    {
+        var inner = ex;
+        while (inner.InnerException != null)
+            inner = inner.InnerException;
+        return inner == ex ? ex.GetType().Name : $"{inner.GetType().Name}: {inner.Message}";
+    }
 
     // /tzoom syncinfo — prints what the sync plugins report, to track down detection problems.
     private void PrintSyncInfo()
