@@ -356,9 +356,11 @@ public sealed unsafe class Plugin : IDalamudPlugin
     }
 
     // ---- Sync plugin detection (Player Sync / Lightless) ----
-    // Both are Mare forks, which expose the game objects they've applied mods to.
-    // Player Sync's names are confirmed from its source; Lightless's are best guesses.
-    // The plain Mare name is a fallback for any fork still using it.
+    // Two independent ways to spot synced people, merged together:
+    //  1. Ask the sync plugins which characters they're handling (names confirmed from their source).
+    //     Player Sync's answer can fail in crowded areas (it throws internally), so we also...
+    //  2. Ask Penumbra which mod collection each nearby player has. Sync plugins give every synced
+    //     person a temporary collection named "Mare_<id>" (Player Sync) or "Lightless_<id>".
     private static readonly (string Ipc, SyncSource Source)[] SyncIpcs =
     [
         ("PlayerSync.GetHandledAddresses", SyncSource.PlayerSync),
@@ -370,10 +372,15 @@ public sealed unsafe class Plugin : IDalamudPlugin
     private readonly Dictionary<nint, SyncSource> synced = new();
     private DateTime nextSyncPoll = DateTime.MinValue;
 
+    // Last good answer from each sync plugin, reused briefly if a call fails mid-update.
+    private readonly Dictionary<string, (List<nint> List, DateTime At)> lastGoodIpc = new();
+    private int penumbraMatches;
+    private string penumbraStatus = "?";
+
     // Which sync plugin (if any) is handling this character.
     public SyncSource GetSync(nint address) => synced.TryGetValue(address, out var s) ? s : SyncSource.None;
 
-    // True when at least one sync plugin answered, so the UI can hide the filter otherwise.
+    // True when a sync plugin is present, so the UI can hide the filter otherwise.
     public bool AnySyncPluginFound { get; private set; }
 
     private void PollSyncPlugins()
@@ -385,21 +392,71 @@ public sealed unsafe class Plugin : IDalamudPlugin
         synced.Clear();
         syncIpcStatus.Clear();
         var found = false;
+
+        // 1. Sync plugins
         foreach (var (ipc, source) in SyncIpcs)
         {
+            List<nint>? list = null;
             try
             {
-                var list = PluginInterface.GetIpcSubscriber<List<nint>>(ipc).InvokeFunc();
-                found = true;
+                list = PluginInterface.GetIpcSubscriber<List<nint>>(ipc).InvokeFunc();
+                lastGoodIpc[ipc] = (list, DateTime.UtcNow);
                 syncIpcStatus[ipc] = $"answered, {list.Count} people";
-                foreach (var addr in list)
-                    synced.TryAdd(addr, source); // first (most specific) name wins
+                found = true;
             }
             catch (Exception ex)
             {
-                // usually: that plugin isn't installed / loaded
-                syncIpcStatus[ipc] = $"no answer ({ex.GetType().Name})";
+                // IpcNotReadyError = that plugin isn't installed. Anything else means it IS
+                // installed but its answer failed this time.
+                var installed = ex is not Dalamud.Plugin.Ipc.Exceptions.IpcNotReadyError;
+                found |= installed;
+                if (installed && lastGoodIpc.TryGetValue(ipc, out var last) && DateTime.UtcNow - last.At < TimeSpan.FromSeconds(10))
+                {
+                    list = last.List;
+                    syncIpcStatus[ipc] = $"failed ({ex.GetType().Name}), using last answer: {list.Count} people";
+                }
+                else
+                {
+                    syncIpcStatus[ipc] = installed ? $"failed ({ex.GetType().Name})" : "not installed";
+                }
             }
+
+            if (list != null)
+                foreach (var addr in list)
+                    synced.TryAdd(addr, source); // first (most specific) name wins
+        }
+
+        // 2. Penumbra temporary collections
+        penumbraMatches = 0;
+        try
+        {
+            // Penumbra.Api's GetCollectionForObject, called directly so we don't need the package.
+            var getCollection = PluginInterface.GetIpcSubscriber<int, (bool, bool, (Guid, string))>("Penumbra.GetCollectionForObject.V5");
+            var me = ObjectTable.LocalPlayer?.Address ?? 0;
+            foreach (var obj in ObjectTable)
+            {
+                if (obj.ObjectKind != ObjectKind.Pc || obj.Address == me)
+                    continue;
+
+                var (valid, individual, (_, name)) = getCollection.InvokeFunc(obj.ObjectIndex);
+                if (!valid || !individual || string.IsNullOrEmpty(name))
+                    continue;
+
+                var source = name.StartsWith("Lightless_", StringComparison.Ordinal) ? SyncSource.Lightless
+                    : name.StartsWith("Mare_", StringComparison.Ordinal) ? SyncSource.PlayerSync
+                    : SyncSource.None;
+                if (source == SyncSource.None)
+                    continue;
+
+                found = true;
+                penumbraMatches++;
+                synced.TryAdd(obj.Address, source);
+            }
+            penumbraStatus = $"answered, {penumbraMatches} synced collections";
+        }
+        catch (Exception ex)
+        {
+            penumbraStatus = ex is Dalamud.Plugin.Ipc.Exceptions.IpcNotReadyError ? "not installed" : $"failed ({ex.GetType().Name})";
         }
 
         AnySyncPluginFound = found;
@@ -416,6 +473,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
         Chat.Print("[Target Zoom] Sync plugin check:");
         foreach (var (ipc, _) in SyncIpcs)
             Chat.Print($"  {ipc}: {syncIpcStatus.GetValueOrDefault(ipc, "?")}");
+        Chat.Print($"  Penumbra collections: {penumbraStatus}");
 
         var players = 0;
         var matched = new HashSet<nint>();
