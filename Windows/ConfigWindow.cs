@@ -39,7 +39,8 @@ public sealed class ConfigWindow : Window
         Theme.SectionHeader(FontAwesomeIcon.SearchPlus, "Zoom");
 
         var zoom = c.ZoomDistance;
-        if (Theme.Slider("Zoom In distance", ref zoom, 1.5f, 20f, "%.1f", "How close the camera gets when you pick Zoom In. Lower is closer."))
+        var zoomMin = c.AllowCloseUps ? c.CloseUpLimit : 1.5f;
+        if (Theme.Slider("Zoom In distance", ref zoom, zoomMin, 20f, "%.1f", "How close the camera starts when you pick Zoom In. Lower is closer. You can still scroll in or out after."))
         {
             c.ZoomDistance = zoom;
             changed = true;
@@ -49,6 +50,36 @@ public sealed class ConfigWindow : Window
         if (Theme.Toggle("Start in front of them", ref front, "Swings the camera around to face them when you zoom in. Turn off to keep your current angle."))
         {
             c.StartInFront = front;
+            changed = true;
+        }
+
+        var closeUps = c.AllowCloseUps;
+        if (Theme.Toggle("Allow close-ups", ref closeUps,
+                "While zoomed, scrolling in keeps going past the normal limit instead of flipping to first person, so you can get a close-up of their face. Back to normal when you stop zooming."))
+        {
+            c.AllowCloseUps = closeUps;
+            changed = true;
+        }
+
+        using (ImRaii.Disabled(!c.AllowCloseUps))
+        {
+            var limit = c.CloseUpLimit;
+            if (Theme.Slider("Closest the camera can get", ref limit, 0.1f, 1.5f, "%.2f",
+                    "The game normally stops at 1.5. Very low values can put the camera inside their head."))
+            {
+                c.CloseUpLimit = limit;
+                if (c.ZoomDistance < limit)
+                    c.ZoomDistance = limit;
+                changed = true;
+            }
+        }
+
+        var hideUi = c.HideUiWhileZoomed;
+        if (Theme.Toggle("Hide the game UI while zoomed", ref hideUi,
+                "Hides the HUD, chat, nameplates and plugin windows for a clean view, the same as Scroll Lock. " +
+                "It comes back when you stop zooming. To get it back sooner, press Scroll Lock (or your Toggle UI key)."))
+        {
+            c.HideUiWhileZoomed = hideUi;
             changed = true;
         }
 
