@@ -1,0 +1,71 @@
+# Builds Target Zoom and publishes it whenever you push a version tag, e.g.:
+#   git tag v0.0.0.2
+#   git push origin v0.0.0.2
+# The tag (minus the "v") becomes the plugin version, so you never edit it by hand.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Download Dalamud
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri https://goatcorp.github.io/dalamud-distrib/latest.zip -OutFile dalamud.zip
+          Expand-Archive -Force dalamud.zip "$env:AppData\XIVLauncher\addon\Hooks\dev"
+
+      - name: Work out version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart("v")
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Build
+        run: dotnet build -c Release -p:Version=${{ steps.ver.outputs.version }}
+
+      - name: Find package
+        id: pkg
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem -Recurse -Filter latest.zip -Path bin | Select-Object -First 1
+          if (-not $zip) { throw "DalamudPackager did not produce latest.zip" }
+          "path=$($zip.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.pkg.outputs.path }}
+          generate_release_notes: true
+
+      - name: Update repo.json
+        shell: pwsh
+        run: |
+          $repo = Get-Content repo.json -Raw | ConvertFrom-Json
+          $repo[0].AssemblyVersion = "${{ steps.ver.outputs.version }}"
+          $repo[0].LastUpdate = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+          ConvertTo-Json @($repo) -Depth 5 | Set-Content repo.json -Encoding utf8
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+          git add repo.json
+          git commit -m "Update repo.json to ${{ steps.ver.outputs.version }}"
+          git push origin main

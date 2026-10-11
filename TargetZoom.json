@@ -1,0 +1,8 @@
+{
+  "Author": "Sadonia",
+  "Name": "Target Zoom",
+  "Punchline": "Right-click someone, pick Zoom In.",
+  "Description": "Adds a Zoom In option to a character's right-click menu. The camera moves onto that character and zooms in close. Pick Stop Zooming (or type /tzoom) to come back to yourself.",
+  "ApplicableVersion": "any",
+  "Tags": [ "camera", "zoom", "screenshot" ]
+}
