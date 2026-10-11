@@ -30,6 +30,11 @@ public sealed class Configuration : IPluginConfiguration
     public bool RestoreZoomOnStop { get; set; } = true;
     // Swing the camera around to face them when you zoom in.
     public bool StartInFront { get; set; } = true;
+    // Close-ups: while zoomed, scroll in closer than normal without flipping to first person.
+    public bool AllowCloseUps { get; set; } = true;
+    public float CloseUpLimit { get; set; } = 0.4f; // closest the camera can get (game default is 1.5)
+    // Hide the game HUD (like Scroll Lock) while zoomed; it comes back when you stop.
+    public bool HideUiWhileZoomed { get; set; } = false;
     // Where the camera angle goes when you stop zooming.
     public CameraOnStop CameraOnStop { get; set; } = CameraOnStop.BehindMe;
 

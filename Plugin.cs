@@ -15,6 +15,7 @@ using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
+using RaptureAtkModule = FFXIVClientStructs.FFXIV.Client.UI.RaptureAtkModule;
 using TargetZoom.Windows;
 using GameObjectStruct = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
 
@@ -42,6 +43,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
     // World camera layout (same values Cammy/Hypostasis use).
     private const int GetCameraTargetVfIndex = 18;
     private const int GetCameraPositionVfIndex = 16;
+    private const int CanChangePerspectiveVfIndex = 23;
     private const int CurrentZoomOffset = 0x124;
     private const int MinZoomOffset = 0x128;
     private const int MaxZoomOffset = 0x12C;
@@ -75,6 +77,12 @@ public sealed unsafe class Plugin : IDalamudPlugin
     private float? savedZoom;        // your zoom before Zoom In, restored on stop
     private float savedHRotation;    // camera angle before Zoom In
     private float savedVRotation;
+    private float? savedMinZoom;     // the game's closest zoom, lowered while zoomed for close-ups
+
+    // Asked by the game before switching 1st <-> 3rd person (e.g. scrolling all the way in).
+    // We say no while zoomed, so scrolling in stops at the closest zoom instead.
+    private delegate byte CanChangePerspectiveDelegate(nint camera);
+    private readonly Hook<CanChangePerspectiveDelegate> canChangePerspectiveHook;
 
     public Plugin()
     {
@@ -89,6 +97,8 @@ public sealed unsafe class Plugin : IDalamudPlugin
         getCameraTargetHook.Enable();
         getCameraPositionHook = GameInterop.HookFromAddress<GetCameraPositionDelegate>(vtbl[GetCameraPositionVfIndex], GetCameraPositionDetour);
         getCameraPositionHook.Enable();
+        canChangePerspectiveHook = GameInterop.HookFromAddress<CanChangePerspectiveDelegate>(vtbl[CanChangePerspectiveVfIndex], CanChangePerspectiveDetour);
+        canChangePerspectiveHook.Enable();
 
         MainWindow = new MainWindow(this);
         ConfigWindow = new ConfigWindow(this);
@@ -127,6 +137,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
         dtrEntry?.Remove();
         getCameraTargetHook.Dispose();
         getCameraPositionHook.Dispose();
+        canChangePerspectiveHook.Dispose();
     }
 
     private static nint WorldCamera
@@ -228,9 +239,15 @@ public sealed unsafe class Plugin : IDalamudPlugin
             savedVRotation = *CameraFloat(VRotationOffset);
         }
 
+        savedMinZoom ??= *CameraFloat(MinZoomOffset);
+        ApplyCloseUpLimit();
+
         var min = *CameraFloat(MinZoomOffset);
         var max = *CameraFloat(MaxZoomOffset);
         *CameraFloat(CurrentZoomOffset) = Math.Clamp(config.ZoomDistance, min, max);
+
+        if (config.HideUiWhileZoomed)
+            HideGameUi();
 
         if (config.StartInFront || forceFront)
         {
@@ -241,8 +258,46 @@ public sealed unsafe class Plugin : IDalamudPlugin
         }
     }
 
+    // ---- Hide UI while zoomed ----
+    // Uses the same switch as the game's Toggle UI key (Scroll Lock by default), so pressing
+    // that key brings everything back, and Dalamud hides plugin windows along with it.
+
+    private bool weHidUi;
+
+    private static bool GameUiVisible
+    {
+        get
+        {
+            var atk = RaptureAtkModule.Instance();
+            return atk == null || atk->IsUiVisible;
+        }
+        set
+        {
+            var atk = RaptureAtkModule.Instance();
+            if (atk != null)
+                atk->IsUiVisible = value;
+        }
+    }
+
+    private void HideGameUi()
+    {
+        if (!GameUiVisible)
+            return; // already hidden by the player; leave it to them
+        GameUiVisible = false;
+        weHidUi = true;
+    }
+
+    private void RestoreGameUi()
+    {
+        // Only undo what we did. If they already brought it back with Scroll Lock, nothing to do.
+        if (weHidUi && !GameUiVisible)
+            GameUiVisible = true;
+        weHidUi = false;
+    }
+
     public void StopZoom()
     {
+        RestoreGameUi();
         var wasZooming = zoomTargetId != 0;
         zoomTargetId = 0;
         zoomTargetAddress = 0;
@@ -268,6 +323,11 @@ public sealed unsafe class Plugin : IDalamudPlugin
                     break;
             }
         }
+
+        // Put the game's closest zoom back before restoring your zoom distance.
+        if (savedMinZoom is { } minZoom && WorldCamera != 0)
+            *CameraFloat(MinZoomOffset) = minZoom;
+        savedMinZoom = null;
 
         savedZoom = null;
         ResetPan();
@@ -366,6 +426,24 @@ public sealed unsafe class Plugin : IDalamudPlugin
         }
 
         zoomTargetAddress = obj.Address;
+        ApplyCloseUpLimit(); // the game can reset it (e.g. on mount/dismount), so keep it applied
+    }
+
+    // While zoomed, let the camera get closer than the game normally allows.
+    private void ApplyCloseUpLimit()
+    {
+        if (WorldCamera == 0 || savedMinZoom is not { } gameMin)
+            return;
+        var limit = config.AllowCloseUps ? MathF.Min(config.CloseUpLimit, gameMin) : gameMin;
+        if (*CameraFloat(MinZoomOffset) != limit)
+            *CameraFloat(MinZoomOffset) = limit;
+    }
+
+    private byte CanChangePerspectiveDetour(nint camera)
+    {
+        if (zoomTargetId != 0 && config.AllowCloseUps)
+            return 0;
+        return canChangePerspectiveHook.Original(camera);
     }
 
     private void GetCameraPositionDetour(nint camera, nint target, Vector3* position, byte swapPerson)
@@ -423,7 +501,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
                 return;
             }
 
-            config.ZoomDistance = Math.Clamp(distance, 1.5f, 20f);
+            config.ZoomDistance = Math.Clamp(distance, 0.2f, 20f);
             config.Save();
             Chat.Print($"Zoom In distance set to {config.ZoomDistance:0.0}.");
             return;
