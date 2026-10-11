@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Numerics;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Enums;
@@ -382,6 +383,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
         nextSyncPoll = DateTime.UtcNow.AddSeconds(1);
 
         synced.Clear();
+        syncIpcStatus.Clear();
         var found = false;
         foreach (var (ipc, source) in SyncIpcs)
         {
@@ -389,16 +391,45 @@ public sealed unsafe class Plugin : IDalamudPlugin
             {
                 var list = PluginInterface.GetIpcSubscriber<List<nint>>(ipc).InvokeFunc();
                 found = true;
+                syncIpcStatus[ipc] = $"answered, {list.Count} people";
                 foreach (var addr in list)
                     synced.TryAdd(addr, source); // first (most specific) name wins
             }
-            catch
+            catch (Exception ex)
             {
-                // that plugin isn't installed / loaded
+                // usually: that plugin isn't installed / loaded
+                syncIpcStatus[ipc] = $"no answer ({ex.GetType().Name})";
             }
         }
 
         AnySyncPluginFound = found;
+    }
+
+    private readonly Dictionary<string, string> syncIpcStatus = new();
+
+    // /tzoom syncinfo — prints what the sync plugins report, to track down detection problems.
+    private void PrintSyncInfo()
+    {
+        nextSyncPoll = DateTime.MinValue;
+        PollSyncPlugins();
+
+        Chat.Print("[Target Zoom] Sync plugin check:");
+        foreach (var (ipc, _) in SyncIpcs)
+            Chat.Print($"  {ipc}: {syncIpcStatus.GetValueOrDefault(ipc, "?")}");
+
+        var players = 0;
+        var matched = new HashSet<nint>();
+        foreach (var obj in ObjectTable)
+        {
+            if (obj.ObjectKind != ObjectKind.Pc || obj.Address == ObjectTable.LocalPlayer?.Address)
+                continue;
+            players++;
+            if (synced.ContainsKey(obj.Address))
+                matched.Add(obj.Address);
+        }
+
+        var unmatched = synced.Keys.Count(a => !matched.Contains(a));
+        Chat.Print($"  Players loaded near you: {players}. Reported as synced: {synced.Count}. Matched to a player: {matched.Count}. Not matched: {unmatched}.");
     }
 
     private void OnFrameworkUpdate(IFramework _)
@@ -487,6 +518,9 @@ public sealed unsafe class Plugin : IDalamudPlugin
             case "stop":
                 trimmed = string.Empty;
                 break;
+            case "syncinfo":
+                PrintSyncInfo();
+                return;
             case "mirror":
                 if (IsMirroring) StopZoom();
                 else StartMirror();
