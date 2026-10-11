@@ -3,7 +3,7 @@
     "Author": "Sadonia",
     "Name": "Target Zoom",
     "InternalName": "TargetZoom",
-    "AssemblyVersion": "0.0.0.1",
+    "AssemblyVersion": "0.0.0.4",
     "Punchline": "Put the camera on anyone — right-click them and pick Zoom In.",
     "Description": "Right-click any character in the world, on the party list or in chat and pick Zoom In. The camera swings around to face them and moves in close, and it stays on them as they move.\n\n• Nearby list: everyone around you with job icons, distance and a name search. Double-click to zoom, right-click for options.\n• Framing pad: drag to slide the view around them to set up the shot.\n• Mirror: look at yourself from the front to check your glam or expression.\n• Player Sync / Lightless: filter the list to synced people, with PS / LL badges.\n• Hide UI while zoomed for clean screenshots.\n• Top bar button to open it, showing who you're zoomed on.\n\nWhen you stop, the camera returns behind you at your old zoom. It stops on its own if they leave, you zone, a cutscene starts or you enter combat — all adjustable in settings.",
     "ApplicableVersion": "any",
@@ -17,7 +17,7 @@
     "DownloadLinkInstall": "https://github.com/sadoniaveletoria/TargetZoom/releases/latest/download/latest.zip",
     "DownloadLinkUpdate": "https://github.com/sadoniaveletoria/TargetZoom/releases/latest/download/latest.zip",
     "DownloadLinkTesting": "https://github.com/sadoniaveletoria/TargetZoom/releases/latest/download/latest.zip",
-    "LastUpdate": 0,
+    "LastUpdate": 1791739586,
     "IconUrl": "https://raw.githubusercontent.com/sadoniaveletoria/TargetZoom/main/images/icon.png"
   }
 ]
