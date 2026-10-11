@@ -1,7 +1,11 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
     <Version>0.0.0.1</Version>
-    <Description>Right-click a character and pick Zoom In to put the camera on them.</Description>
+    <Description>Put the camera on anyone — right-click them and pick Zoom In.</Description>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Dalamud shows images/icon.png next to the DLL for dev plugins; the packager also ships it. -->
+    <Content Include="images\icon.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
