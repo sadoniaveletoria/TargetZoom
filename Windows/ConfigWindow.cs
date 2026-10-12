@@ -46,6 +46,14 @@ public sealed class ConfigWindow : Window
             changed = true;
         }
 
+        var openOnZoom = c.OpenWindowOnZoom;
+        if (Theme.Toggle("Open the Target Zoom window when I zoom in", ref openOnZoom,
+                "Opens the window with the Stop button and framing pad whenever you zoom in, including from the game's right-click menu or chat."))
+        {
+            c.OpenWindowOnZoom = openOnZoom;
+            changed = true;
+        }
+
         var front = c.StartInFront;
         if (Theme.Toggle("Start in front of them", ref front, "Swings the camera around to face them when you zoom in. Turn off to keep your current angle."))
         {

@@ -30,6 +30,8 @@ public sealed class Configuration : IPluginConfiguration
     public bool RestoreZoomOnStop { get; set; } = true;
     // Swing the camera around to face them when you zoom in.
     public bool StartInFront { get; set; } = true;
+    // Open the Target Zoom window whenever you zoom in (right-click menu, chat, /tzoom mirror...).
+    public bool OpenWindowOnZoom { get; set; } = true;
     // Close-ups: while zoomed, scroll in closer than normal without flipping to first person.
     public bool AllowCloseUps { get; set; } = true;
     public float CloseUpLimit { get; set; } = 0.4f; // closest the camera can get (game default is 1.5)

@@ -250,6 +250,10 @@ public sealed unsafe class Plugin : IDalamudPlugin
         if (config.HideUiWhileZoomed)
             HideGameUi();
 
+        // Bring up the Target Zoom window so Stop, the framing pad etc. are right there.
+        if (config.OpenWindowOnZoom)
+            MainWindow.IsOpen = true;
+
         if (config.StartInFront || forceFront)
         {
             // Camera angle equal to their facing puts the camera in front of them
