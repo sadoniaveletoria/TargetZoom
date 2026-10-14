@@ -235,13 +235,17 @@ public sealed class MainWindow : Window
             dl.AddText(new Vector2(textX + 13 * s, top), Theme.U32(Theme.Accent), plugin.IsMirroring ? "MIRROR" : "ZOOMED IN");
             dl.AddText(new Vector2(textX, top + line + 2 * s), Theme.U32(Theme.Text), current.Name.TextValue);
 
-            // Stop button on the right
-            var btnLabel = "Stop";
-            var btnW = Theme.IconSize(FontAwesomeIcon.Times).X + ImGui.CalcTextSize(btnLabel).X + 32 * s;
-            var btnH = ImGui.GetFrameHeight();
-            ImGui.SetCursorScreenPos(new Vector2(end.X - btnW - 12 * s, start.Y + (height - btnH) / 2f));
-            if (Theme.AccentButton(FontAwesomeIcon.Times, btnLabel, new Vector2(btnW, btnH)))
-                plugin.StopZoom();
+            // No Stop button: stop from the list (double-click / right-click), Esc, or /tzoom.
+            // The card itself also stops on double-click, which covers Mirror (you're not in the list).
+            ImGui.SetCursorScreenPos(start);
+            ImGui.InvisibleButton("##statuscard", new Vector2(width, height));
+            if (ImGui.IsItemHovered())
+            {
+                if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                    plugin.StopZoom();
+                else
+                    ImGui.SetTooltip("Double-click to stop zooming");
+            }
         }
         else
         {
