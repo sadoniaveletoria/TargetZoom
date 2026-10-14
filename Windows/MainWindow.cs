@@ -180,8 +180,19 @@ public sealed class MainWindow : Window
         ImGui.Dummy(pill);
 
         var gear = ImGui.GetFrameHeight();
-        ImGui.SameLine(ImGui.GetWindowContentRegionMax().X - gear);
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() - (gear - ImGui.GetTextLineHeight()) / 2f);
+        var gap = 6 * s;
+        ImGui.SameLine(ImGui.GetWindowContentRegionMax().X - gear * 2 - gap);
+        var rowY = ImGui.GetCursorPosY() - (gear - ImGui.GetTextLineHeight()) / 2f;
+        ImGui.SetCursorPosY(rowY);
+
+        // Show / hide the game UI (HUD, chat, nameplates). Target Zoom's window stays up either way.
+        var hidden = plugin.IsGameUiHidden;
+        if (Theme.RoundIconButton("##gameui", hidden ? FontAwesomeIcon.EyeSlash : FontAwesomeIcon.Eye,
+                hidden ? "Show the game UI" : "Hide the game UI"))
+            plugin.SetGameUiHidden(!hidden);
+
+        ImGui.SameLine(0, gap);
+        ImGui.SetCursorPosY(rowY);
         if (Theme.RoundIconButton("##settings", FontAwesomeIcon.Cog, "Settings"))
             plugin.ConfigWindow.Toggle();
 

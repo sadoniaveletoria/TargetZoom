@@ -300,6 +300,22 @@ public sealed unsafe class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.DisableUserUiHide = true;
     }
 
+    // For the eye button in the Target Zoom window.
+    public bool IsGameUiHidden => !GameUiVisible;
+
+    public void SetGameUiHidden(bool hide)
+    {
+        if (hide)
+        {
+            HideGameUi(); // also keeps Target Zoom's own windows up
+            return;
+        }
+
+        GameUiVisible = true;
+        weHidUi = false;
+        PluginInterface.UiBuilder.DisableUserUiHide = false;
+    }
+
     private void RestoreGameUi()
     {
         // Only undo what we did. If they already brought it back with Scroll Lock, nothing to do.
@@ -527,6 +543,10 @@ public sealed unsafe class Plugin : IDalamudPlugin
     // The game applies its usual rules: they must be fairly close, and it can't examine NPCs.
     public void Examine(IGameObject obj)
     {
+        // The Examine window is part of the game UI, so bring the UI back if it's hidden.
+        if (IsGameUiHidden)
+            SetGameUiHidden(false);
+
         var agent = AgentInspect.Instance();
         if (agent != null)
             agent->ExamineCharacter(obj.EntityId);
