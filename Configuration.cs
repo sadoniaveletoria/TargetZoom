@@ -52,6 +52,7 @@ public sealed class Configuration : IPluginConfiguration
     // ---- Auto-stop ----
     public bool StopOnCombat { get; set; } = true;
     public bool StopOnCutscene { get; set; } = true;
+    public bool StopOnEsc { get; set; } = true;
     // Stop if they get farther than this from you (yalms). 0 = never.
     public float StopBeyondDistance { get; set; } = 0f;
 

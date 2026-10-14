@@ -18,6 +18,14 @@ public sealed class MainWindow : Window
 {
     private readonly Plugin plugin;
     private string filter = string.Empty;
+
+    // Send Tell popup
+    private string tellName = string.Empty;
+    private string tellWorld = string.Empty;
+    private string tellText = string.Empty;
+    private string tellError = string.Empty;
+    private bool openTellPopup;
+    private bool focusTellInput;
     private Theme.Scope? theme;
 
     private record struct Entry(ICharacter Character, ulong Id, string Name, string Subtitle, uint IconId, float Distance, SyncSource Sync);
@@ -88,6 +96,66 @@ public sealed class MainWindow : Window
         }
 
         DrawFooter();
+        DrawTellPopup();
+    }
+
+    // ---- Send Tell popup ----
+
+    private void DrawTellPopup()
+    {
+        const string id = "##tellpopup";
+        if (openTellPopup)
+        {
+            ImGui.OpenPopup(id);
+            openTellPopup = false;
+            focusTellInput = true;
+        }
+
+        var s = Theme.Scale;
+        using var pad = ImRaii.PushStyle(ImGuiStyleVar.WindowPadding, new Vector2(14, 12) * s);
+        ImGui.SetNextWindowSize(new Vector2(320 * s, 0));
+        using var popup = ImRaii.Popup(id);
+        if (!popup)
+            return;
+
+        Theme.Icon(FontAwesomeIcon.CommentDots, Theme.Accent);
+        ImGui.SameLine(0, 8 * s);
+        ImGui.TextUnformatted($"Tell {tellName}");
+        if (tellWorld.Length > 0)
+        {
+            ImGui.SameLine(0, 6 * s);
+            ImGui.TextDisabled($"@{tellWorld}");
+        }
+        ImGui.Separator();
+
+        if (focusTellInput)
+        {
+            ImGui.SetKeyboardFocusHere();
+            focusTellInput = false;
+        }
+        ImGui.SetNextItemWidth(-1);
+        var enter = ImGui.InputTextWithHint("##tellmsg", "Say something nice…", ref tellText, 400, ImGuiInputTextFlags.EnterReturnsTrue);
+
+        if (tellError.Length > 0)
+        {
+            using (ImRaii.PushColor(ImGuiCol.Text, Theme.Warn))
+                ImGui.TextWrapped(tellError);
+        }
+
+        ImGui.Dummy(new Vector2(0, 2 * s));
+        var half = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) / 2f;
+        if (Theme.SoftButton(FontAwesomeIcon.Times, "Cancel", new Vector2(half, ImGui.GetFrameHeight())))
+            ImGui.CloseCurrentPopup();
+        ImGui.SameLine();
+        var send = Theme.AccentButton(FontAwesomeIcon.PaperPlane, "Send", new Vector2(half, ImGui.GetFrameHeight()));
+
+        if (send || enter)
+        {
+            if (plugin.SendTell(tellName, tellWorld, tellText, out var error))
+                ImGui.CloseCurrentPopup();
+            else
+                tellError = error;
+        }
     }
 
     // ---- Header: title, count, settings gear ----
@@ -436,6 +504,22 @@ public sealed class MainWindow : Window
         if (MenuRow(FontAwesomeIcon.Bullseye, "Target", w, Theme.TextDim))
         {
             Plugin.TargetManager.Target = e.Character;
+            ImGui.CloseCurrentPopup();
+        }
+
+        if (e.Character.ObjectKind == ObjectKind.Pc && MenuRow(FontAwesomeIcon.Tshirt, "Examine", w, Theme.TextDim))
+        {
+            plugin.Examine(e.Character);
+            ImGui.CloseCurrentPopup();
+        }
+
+        if (e.Character is IPlayerCharacter pc && MenuRow(FontAwesomeIcon.CommentDots, "Send Tell", w, Theme.TextDim))
+        {
+            tellName = pc.Name.TextValue;
+            tellWorld = pc.HomeWorld.ValueNullable?.Name.ExtractText() ?? string.Empty;
+            tellText = string.Empty;
+            tellError = string.Empty;
+            openTellPopup = true;
             ImGui.CloseCurrentPopup();
         }
     }

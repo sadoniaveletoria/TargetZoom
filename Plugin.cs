@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Keys;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Game.ClientState.Objects.Types;
@@ -17,6 +18,10 @@ using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using RaptureAtkModule = FFXIVClientStructs.FFXIV.Client.UI.RaptureAtkModule;
+using AgentInspect = FFXIVClientStructs.FFXIV.Client.UI.Agent.AgentInspect;
+using UIModule = FFXIVClientStructs.FFXIV.Client.UI.UIModule;
+using Utf8String = FFXIVClientStructs.FFXIV.Client.System.String.Utf8String;
+using AllowedEntities = FFXIVClientStructs.FFXIV.Client.System.String.AllowedEntities;
 using TargetZoom.Windows;
 using GameObjectStruct = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
 
@@ -34,6 +39,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
     [PluginService] internal static IChatGui Chat { get; private set; } = null!;
     [PluginService] internal static ITargetManager TargetManager { get; private set; } = null!;
     [PluginService] internal static ITextureProvider TextureProvider { get; private set; } = null!;
+    [PluginService] internal static IKeyState KeyState { get; private set; } = null!;
     [PluginService] internal static IDtrBar DtrBar { get; private set; } = null!;
 
     private IDtrBarEntry? dtrEntry;
@@ -516,8 +522,89 @@ public sealed unsafe class Plugin : IDalamudPlugin
         Chat.Print($"  Players loaded near you: {players}. Reported as synced: {synced.Count}. Matched to a player: {matched.Count}. Not matched: {unmatched}.");
     }
 
+    // ---- Examine ----
+    // Opens the game's own Examine window (gear, glamour, dyes) for that character.
+    // The game applies its usual rules: they must be fairly close, and it can't examine NPCs.
+    public void Examine(IGameObject obj)
+    {
+        var agent = AgentInspect.Instance();
+        if (agent != null)
+            agent->ExamineCharacter(obj.EntityId);
+    }
+
+    // ---- Send Tell ----
+    // Sends "/tell Name@World message" exactly as if you'd typed it in chat yourself.
+    public bool SendTell(string name, string world, string message, out string error)
+    {
+        error = string.Empty;
+        message = message.Replace("\r", " ").Replace("\n", " ").Trim();
+        if (message.Length == 0)
+        {
+            error = "Type a message first.";
+            return false;
+        }
+
+        var full = string.IsNullOrEmpty(world) ? $"/tell {name} {message}" : $"/tell {name}@{world} {message}";
+        if (System.Text.Encoding.UTF8.GetByteCount(full) > 500)
+        {
+            error = "That message is too long for the game's chat.";
+            return false;
+        }
+
+        var uiModule = UIModule.Instance();
+        if (uiModule == null)
+        {
+            error = "Chat isn't available right now.";
+            return false;
+        }
+
+        var str = Utf8String.FromString(full);
+        try
+        {
+            // Same check the game does on typed chat; refuse anything it would strip out.
+            str->SanitizeString((AllowedEntities)0x27F);
+            if (str->ToString() != full)
+            {
+                error = "The message has characters the game chat can't send.";
+                return false;
+            }
+
+            uiModule->ProcessChatBoxEntry(str);
+            return true;
+        }
+        finally
+        {
+            str->Dtor(true);
+        }
+    }
+
+    // ---- Esc to stop ----
+    private bool escWasDown;
+    private bool textInputWasActive;
+
+    private void CheckEscToStop()
+    {
+        var down = KeyState[VirtualKey.ESCAPE];
+        var pressed = down && !escWasDown;
+        escWasDown = down;
+
+        // Don't stop when Esc is just closing the chat box (or any text field) the player is typing in.
+        var atk = RaptureAtkModule.Instance();
+        var typing = atk != null && atk->AtkModule.IsTextInputActive();
+        var wasTyping = textInputWasActive;
+        textInputWasActive = typing;
+
+        if (!pressed || zoomTargetId == 0 || !config.StopOnEsc)
+            return;
+        if (typing || wasTyping || Dalamud.Bindings.ImGui.ImGui.GetIO().WantTextInput)
+            return;
+
+        StopZoom();
+    }
+
     private void OnFrameworkUpdate(IFramework _)
     {
+        CheckEscToStop();
         UpdateDtr();
         PollSyncPlugins();
 

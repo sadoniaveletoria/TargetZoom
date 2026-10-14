@@ -174,6 +174,13 @@ public sealed class ConfigWindow : Window
             changed = true;
         }
 
+        var esc = c.StopOnEsc;
+        if (Theme.Toggle("When I press Esc", ref esc, "Pressing Esc stops zooming (not while you're typing in chat)."))
+        {
+            c.StopOnEsc = esc;
+            changed = true;
+        }
+
         var cutscene = c.StopOnCutscene;
         if (Theme.Toggle("When a cutscene starts", ref cutscene))
         {
