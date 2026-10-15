@@ -28,12 +28,3 @@ A Dalamud plugin for FFXIV. Right-click someone and pick **Zoom In** — the cam
 | `/tzoom settings` | Open settings |
 | `/tzoom mirror` | Look at yourself from the front |
 | `/tzoom <distance>` | Set how close Zoom In gets (1.5–20) |
-
-## Releasing a new version
-
-```
-git tag v0.0.0.2
-git push origin v0.0.0.2
-```
-
-GitHub Actions builds it, attaches it to a release and bumps `repo.json`; everyone with the repo added gets the update.
